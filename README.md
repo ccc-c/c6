@@ -7,7 +7,7 @@
 ## 使用方式
 
 ```
-$ gcc c6.c -o c6
+$ gcc -w c6.c -o c6 // 用 -w 可以避免警告，因為 c6 的原始碼太精簡使用了危險語法
 
 $ ./c6 test/hello.c
 hello, world
