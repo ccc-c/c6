@@ -74,8 +74,7 @@ void printInstr(int *p, int *code, char *data) {
   }
 }
 
-void next()
-{
+void next() {
   char *pp;
   // 詞彙解析 lexer
   while (tk = *p) {
@@ -158,8 +157,7 @@ void next()
   }
 }
 
-void expr(int lev)
-{
+void expr(int lev) {
   int t, *d;
   // 運算式 expression, 其中 lev 代表優先等級
   if (!tk) { printf("%d: unexpected eof in expression\n", line); exit(-1); } // EOF
@@ -309,8 +307,7 @@ void expr(int lev)
   }
 }
 
-void stmt()
-{
+void stmt() {
   int *a, *b;
   // 陳述 statement
   if (tk == If) { // if 語句
