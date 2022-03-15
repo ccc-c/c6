@@ -1,0 +1,3 @@
+[submodule "c6.wiki"]
+	path = c6.wiki
+	url = https://github.com/ccc-c/c4.wiki.git
