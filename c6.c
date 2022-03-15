@@ -9,13 +9,13 @@
 #include <memory.h>
 #include <unistd.h>
 #include <fcntl.h>
-#define int long long
+#define int long long // c6 要求 int 與處理器位址同樣長度，因此將 int 定義為 64 位元整數。
 
 char *p, *lp, // current position in source code (p: 目前原始碼指標, lp: 上一行原始碼指標)
-     *data,*data0, // data/bss pointer (資料段機器碼指標)
+     *data,*datap, // data/bss pointer (資料段機器碼指標)
      *op;     // 指令字串列表
 
-int *e, *le, *code0, // current position in emitted code (e: 目前機器碼指標, le: 上一行機器碼指標)
+int *e, *le, *code, // current position in emitted code (e: 目前機器碼指標, le: 上一行機器碼指標)
     *id,      // currently parsed identifier (id: 目前的 id)
     *sym,     // symbol table (simple list of identifiers) (符號表)
     tk,       // current token (目前 token)
@@ -51,16 +51,17 @@ enum { CHAR, INT, PTR };
 // identifier offsets (since we can't create an ident struct)
 enum { Tk, Hash, Name, Class, Type, Val, HClass, HType, HVal, Idsz }; // HClass, HType, HVal 是暫存的備份 ???
 
-int stepInstr(int *p) { // ADJ 之前有一個參數，之後沒有參數。
+int stepInstr(int *p) {
+  // 傳回下一個指令大小：ADJ 之前有一個參數，之後沒有參數。
   if (*++p <= ADJ) return 2; else return 1;
 }
 
 void printInstr(int *p, int *code, char *data) {
   int ir, arg;
-
+  // 印出下一個指令
   ir = *++p;
   printf(" %4X:%X %8.4s", p-code, p, &op[ir * 5]);
-  if (ir <= ADJ) { // ADJ 之前有一個參數，之後沒有參數。
+  if (ir <= ADJ) { // ADJ 之前的指令有一個參數
     arg = *++p;
     if (ir==JSR || ir==JMP || ir==BZ || ir==BNZ) {
       if (arg==0) printf("0?\n"); else printf(" %X:%X\n", (int*)arg-code, (int*)arg);
@@ -68,15 +69,15 @@ void printInstr(int *p, int *code, char *data) {
       printf(" %X:%X\n", (char*)arg-data, arg);
     else 
       printf(" %d\n", arg);
-  } else {
+  } else { // ADJ 之後的指令沒有任何參數
     printf("\n");
   }
 }
 
-void next() // 詞彙解析 lexer
+void next()
 {
   char *pp;
-
+  // 詞彙解析 lexer
   while (tk = *p) {
     ++p;
     if (tk == '\n') { // 換行
@@ -84,7 +85,7 @@ void next() // 詞彙解析 lexer
         printf("%d: %.*s", line, p - lp, lp); // 印出該行
         lp = p; // lp = p = 新一行的原始碼開頭
         while (le < e) { // 印出上一行的所有目的碼
-          printInstr(le, code0, data0);
+          printInstr(le, code, data);
           le = le + stepInstr(le);
         }
       }
@@ -129,12 +130,12 @@ void next() // 詞彙解析 lexer
       }
     }
     else if (tk == '\'' || tk == '"') { // 字元或字串
-      pp = data;
+      pp = datap;
       while (*p != 0 && *p != tk) {
         if ((ival = *p++) == '\\') {
           if ((ival = *p++) == 'n') ival = '\n'; // 處理 \n 的特殊情況
         }
-        if (tk == '"') *data++ = ival; // 把字串塞到資料段裏
+        if (tk == '"') *datap++ = ival; // 把字串塞到資料段裏
       }
       ++p;
       if (tk == '"') ival = (int)pp; else tk = Num; // (若是字串) ? (ival = 字串 (在資料段中的) 指標) : (字元值)
@@ -157,16 +158,16 @@ void next() // 詞彙解析 lexer
   }
 }
 
-void expr(int lev) // 運算式 expression, 其中 lev 代表優先等級
+void expr(int lev)
 {
   int t, *d;
-
+  // 運算式 expression, 其中 lev 代表優先等級
   if (!tk) { printf("%d: unexpected eof in expression\n", line); exit(-1); } // EOF
   else if (tk == Num) { *++e = IMM; *++e = ival; next(); ty = INT; } // 數值
   else if (tk == '"') { // 字串
     *++e = ADDR; *++e = ival; next();
     while (tk == '"') next();
-    data = (char *)((int)data + sizeof(int) & -sizeof(int)); ty = PTR; // 用 int 為大小對齊 ??
+    datap = (char *)((int)datap + sizeof(int) & -sizeof(int)); ty = PTR; // 用 int 為大小對齊 ??
   }
   else if (tk == Sizeof) { // 處理 sizeof(type) ，其中 type 可能為 char, int 或 ptr
     next(); if (tk == '(') next(); else { printf("%d: open paren expected in sizeof\n", line); exit(-1); }
@@ -181,10 +182,10 @@ void expr(int lev) // 運算式 expression, 其中 lev 代表優先等級
     if (tk == '(') { // id (args) ，這是 call
       next();
       t = 0;
-      while (tk != ')') { expr(Assign); *++e = PSH; ++t; if (tk == ',') next(); } // 推入 arg
+      while (tk != ')') { expr(Assign); *++e = PSH; ++t; if (tk == ',') next(); } // 推入參數
       next();
       // d[Class] 可能為 Num = 128, Fun, Sys, Glo, Loc, ...
-      if (d[Class] == Sys) *++e = d[Val]; // token 是系統呼叫 ???
+      if (d[Class] == Sys) *++e = d[Val]; // token 是系統呼叫，直接呼叫之...
       else if (d[Class] == Fun) { *++e = JSR; *++e = d[Val]; } // token 是自訂函數，用 JSR : jump to subroutine 指令呼叫
       else { printf("%d: bad function call\n", line); exit(-1); }
       if (t) { *++e = ADJ; *++e = t; } // 有參數，要調整堆疊  (ADJ : stack adjust)
@@ -308,10 +309,10 @@ void expr(int lev) // 運算式 expression, 其中 lev 代表優先等級
   }
 }
 
-void stmt() // 陳述 statement
+void stmt()
 {
   int *a, *b;
-
+  // 陳述 statement
   if (tk == If) { // if 語句
     next();
     if (tk == '(') next(); else { printf("%d: open paren expected\n", line); exit(-1); }
@@ -357,8 +358,9 @@ void stmt() // 陳述 statement
   }
 }
 
-int prog() { // 編譯整個程式 Program
+int prog() {
   int bt, i;
+  // 編譯整個程式 Program
   line = 1;
   next();
   while (tk) {
@@ -447,8 +449,8 @@ int prog() { // 編譯整個程式 Program
       }
       else {
         id[Class] = Glo;
-        id[Val] = (int)data;
-        data = data + sizeof(int);
+        id[Val] = (int)datap;
+        datap = datap + sizeof(int);
       }
       if (tk == ',') next();
     }
@@ -457,15 +459,32 @@ int prog() { // 編譯整個程式 Program
   return 0;
 }
 
-int run(int *pc, int *bp, int *sp) { // 虛擬機 => pc: 程式計數器, sp: 堆疊暫存器, bp: 框架暫存器
+int compile(int fd) {
+  int i, *t;
+  // 編譯器
+  p = "char else enum if int return sizeof while "
+      "open read write close printf malloc free memset memcmp exit void main";
+  i = Char; while (i <= While) { next(); id[Tk] = i++; } // add keywords to symbol table
+  i = OPEN; while (i <= EXIT) { next(); id[Class] = Sys; id[Type] = INT; id[Val] = i++; } // add library to symbol table
+  next(); id[Tk] = Char; // handle void type
+  next(); idmain = id; // keep track of main
+
+  if (!(lp = p = malloc(poolsz))) { printf("could not malloc(%d) source area\n", poolsz); return -1; }
+  if ((i = read(fd, p, poolsz-1)) <= 0) { printf("read() returned %d\n", i); return -1; }
+  p[i] = 0; // 設定程式 p 字串結束符號 \0
+
+  return prog();
+}
+
+int run(int *pc, int *bp, int *sp) {
   int a, cycle; // a: 累積器, cycle: 執行指令數
   int i, *t;    // temps
-
+  // 虛擬機 => pc: 程式計數器, sp: 堆疊暫存器, bp: 框架暫存器
   cycle = 0;
   while (1) {
     i = *pc++; ++cycle;
     if (debug) {
-      printInstr(pc-2, code0, data0); // pc-2, 因為已經 pc++ 過了，而 printInstr 又是落後一個的情況。
+      printInstr(pc-2, code, data); // pc-2, 因為已經 pc++ 過了，而 printInstr 又是落後一個的情況。
     }
     if      (i == LEA) a = (int)(bp + *pc++);                             // load local address 載入區域變數
     else if (i == IMM) a = *pc++;                                         // load immediate 載入立即值
@@ -514,25 +533,9 @@ int run(int *pc, int *bp, int *sp) { // 虛擬機 => pc: 程式計數器, sp: �
   }
 }
 
-int compile(int fd) {
-  int i, *t;
-  p = "char else enum if int return sizeof while "
-      "open read write close printf malloc free memset memcmp exit void main";
-  i = Char; while (i <= While) { next(); id[Tk] = i++; } // add keywords to symbol table
-  i = OPEN; while (i <= EXIT) { next(); id[Class] = Sys; id[Type] = INT; id[Val] = i++; } // add library to symbol table
-  next(); id[Tk] = Char; // handle void type
-  next(); idmain = id; // keep track of main
-
-  if (!(lp = p = malloc(poolsz))) { printf("could not malloc(%d) source area\n", poolsz); return -1; }
-  if ((i = read(fd, p, poolsz-1)) <= 0) { printf("read() returned %d\n", i); return -1; }
-  p[i] = 0; // 設定程式 p 字串結束符號 \0
-
-  return prog();
-}
-
 int vm(int argc, char **argv) {
   int *t;
-  // setup stack
+  // 虛擬機: setup stack
   bp = sp = (int *)((int)sp + poolsz);
   *--sp = EXIT;     // call exit if main returns
   *--sp = PSH; t = sp;
@@ -544,15 +547,15 @@ int vm(int argc, char **argv) {
 
 int obj_relocate(int *code, int codeLen, int *pcode1, char *pdata1, int *pcode2, char *pdata2) {
   int *p, ir;
-
+  // 程式段機器碼重定位
   p=code;
   while (p<code+codeLen) {
     ir=*++p;
-    if (ir <= ADJ) {
+    if (ir <= ADJ) { // ADJ 之前的指令，有一個參數
       ++p;
-      if (ir == ADDR)
+      if (ir == ADDR) // 資料位址，重定位
         *p = (int)(pdata2+((char*)*p-pdata1));
-      else if (ir==JSR || ir==JMP || ir==BZ  || ir==BNZ)
+      else if (ir==JSR || ir==JMP || ir==BZ  || ir==BNZ) // 跳躍指令，重定位
         *p = (int)(pcode2+((int*)*p-pcode1));
     }
   }
@@ -561,16 +564,16 @@ int obj_relocate(int *code, int codeLen, int *pcode1, char *pdata1, int *pcode2,
 int obj_dump(int *entry, int *code, int codeLen, char *data, int dataLen) {
   int *p, ir, arg, step;
   char *dp;
-
-  printf("entry=%d code=%d codeLen=%d data=%d dataLen=%d\n", entry, code, codeLen, data, dataLen);
-  printf("code:\n");
+  // 印出目的碼
+  printf("entry: 0x%X\n", entry);
+  printf("code: start=0x%X length=0x%X\n", code, codeLen);
   p=code;
   while (p<code+codeLen) {
     printInstr(p, code, data);
     p = p+stepInstr(p);
   }
 
-  printf("data:");
+  printf("data: start=0x%X length=0x%X\n", data, dataLen);
   dp = data;
   while (dp<data+dataLen) {
     printf("%c", *dp++);
@@ -580,39 +583,41 @@ int obj_dump(int *entry, int *code, int codeLen, char *data, int dataLen) {
 
 int obj_save(char *oFile, int *entry, int *code, int codeLen, char *data, int dataLen) {
   int fd, len;
-  // fd = open(oFile, 01101); // Linux: O_CREAT|O_WRONLY|O_TRUNC=01101
-  fd = open(oFile, 0101401); // Windows: O_BINARY|O_CREAT|O_WRONLY|O_TRUNC=0101401
+  // 儲存目的檔
+  fd = open(oFile, 0101401); // Windows: O_BINARY|O_CREAT|O_WRONLY|O_TRUNC=0101401 // Linux: O_CREAT|O_WRONLY|O_TRUNC=01101
   if (fd == -1) return -1;
   write(fd, &entry, sizeof(int));
   write(fd, &code, sizeof(int));
   write(fd, &codeLen, sizeof(int));
   write(fd, &data, sizeof(int));
   write(fd, &dataLen, sizeof(int));
-  len = write(fd, code, codeLen*sizeof(int));
-  printf("write code len=%d codeLen*sizeof(int)=%d\n", len, codeLen*sizeof(int));
+  write(fd, code, codeLen*sizeof(int));
   write(fd, data, dataLen);
   close(fd);
 }
 
 int obj_load(int fd) {
-  int *codep, *entry, len;
-  char *datap;
+  int *codex, *entry, len;
+  char *datax;
+  // 載入目的檔
   read(fd, &entry, sizeof(int));
-  read(fd, &codep, sizeof(int));
+  read(fd, &codex, sizeof(int));
   read(fd, &codeLen, sizeof(int));
-  read(fd, &datap, sizeof(int));
+  read(fd, &datax, sizeof(int));
   read(fd, &dataLen, sizeof(int));
-  len = read(fd, code0, codeLen*sizeof(int));
-  if (len != codeLen*sizeof(int)) { printf("obj_load:read fail, len(%d) < size(%d)\n", len, codeLen*sizeof(int)); exit(1); }
-  len = read(fd, data0, dataLen);
-  obj_relocate(code0, codeLen, codep, datap, code0, data0);
-  pc = code0 + (entry-codep);
+  len = read(fd, code, codeLen*sizeof(int));
+  if (len != codeLen*sizeof(int)) {
+    printf("obj_load:read code fail, len(%d)!=size(%d)\n", len, codeLen*sizeof(int));
+    exit(1);
+  }
+  len = read(fd, data, dataLen);
+  obj_relocate(code, codeLen, codex, datax, code, data);
+  pc = code + (entry-codex);
 }
 
-int main(int argc, char **argv) // 主程式
-{
+int main(int argc, char **argv) {
   char *iFile, *oFile, *narg;
-
+  // 主程式
   --argc; ++argv; // 略過程式名稱 ./c6
   if (argc > 0 && **argv == '-' && (*argv)[1] == 's') { src = 1; --argc; ++argv; }
   if (argc > 0 && **argv == '-' && (*argv)[1] == 'd') { debug = 1; --argc; ++argv; }
@@ -627,14 +632,15 @@ int main(int argc, char **argv) // 主程式
       oFile = *(argv+2);
     }
   }
+  if ((fd = open(iFile, 0100000)) < 0) { // 0100000 代表以 BINARY mode 開啟 (Windows 中預設為 TEXT mode)
+    printf("could not open(%s)\n", iFile);
+    return -1;
+  }
 
-  // if ((fd = open(iFile, 0)) < 0) { printf("could not open(%s)\n", iFile); return -1; }
-  if ((fd = open(iFile, 0100000)) < 0) { printf("could not open(%s)\n", iFile); return -1; }
-
-  poolsz = 256*1024; // arbitrary size
+  poolsz = 256*1024; // 最大記憶體大小 (程式碼/資料/堆疊/符號表)
   if (!(sym = malloc(poolsz))) { printf("could not malloc(%d) symbol area\n", poolsz); return -1; } // 符號段
-  if (!(code0 = le = e = malloc(poolsz))) { printf("could not malloc(%d) text area\n", poolsz); return -1; } // 程式段
-  if (!(data0 = data = malloc(poolsz))) { printf("could not malloc(%d) data area\n", poolsz); return -1; } // 資料段
+  if (!(code = le = e = malloc(poolsz))) { printf("could not malloc(%d) text area\n", poolsz); return -1; } // 程式段
+  if (!(data = datap = malloc(poolsz))) { printf("could not malloc(%d) data area\n", poolsz); return -1; } // 資料段
   if (!(sp = malloc(poolsz))) { printf("could not malloc(%d) stack area\n", poolsz); return -1; }  // 堆疊段
 
   memset(sym,  0, poolsz);
@@ -642,24 +648,26 @@ int main(int argc, char **argv) // 主程式
   memset(data, 0, poolsz);
 
   op = "LEA ,IMM ,ADDR,JMP ,JSR ,BZ  ,BNZ ,ENT ,ADJ ,LEV ,LI  ,LC  ,SI  ,SC  ,PSH ,"
-                           "OR  ,XOR ,AND ,EQ  ,NE  ,LT  ,GT  ,LE  ,GE  ,SHL ,SHR ,ADD ,SUB ,MUL ,DIV ,MOD ,"
-                           "OPEN,READ,WRIT,CLOS,PRTF,MALC,FREE,MSET,MCMP,EXIT,";
-
-  if (o_dump) { obj_load(fd); obj_dump(pc, code0, codeLen, data0, dataLen); return 0; }
-  if (o_run) { obj_load(fd); vm(argc, argv); return 0; }
-
-  if (compile(fd)==-1) return -1;
-
-  if (!(pc = (int *)idmain[Val])) { printf("main() not defined\n"); return -1; }
-
-  if (src) return 0;
-  if (o_save) {
-    obj_dump(pc, code0, e-code0, data0, data-data0);
-    obj_save(oFile, pc, code0, e-code0, data0, data-data0);
+       "OR  ,XOR ,AND ,EQ  ,NE  ,LT  ,GT  ,LE  ,GE  ,SHL ,SHR ,ADD ,SUB ,MUL ,DIV ,MOD ,"
+       "OPEN,READ,WRIT,CLOS,PRTF,MALC,FREE,MSET,MCMP,EXIT,";
+  if (o_dump) { // -u: 印出目的檔
+    obj_load(fd);
+    obj_dump(pc, code, codeLen, data, dataLen);
     return 0;
   }
-
+  if (o_run) { // -r: 執行目的檔
+    obj_load(fd);
+    vm(argc, argv);
+    return 0;
+  }
+  if (compile(fd)==-1) return -1; // 編譯
+  if (!(pc = (int *)idmain[Val])) { printf("main() not defined\n"); return -1; }
+  if (src) return 0; // 編譯並列印，不執行
+  if (o_save) { // -o 輸出目的檔，但不執行
+    obj_save(oFile, pc, code, e-code, data, datap-data);
+    printf("Compile %s success!\nOutput: %s\n", iFile, oFile);
+    return 0;
+  }
   close(fd);
-
-  vm(argc, argv);
+  vm(argc, argv); // 用虛擬機執行編譯出來的碼
 }
