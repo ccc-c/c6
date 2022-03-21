@@ -60,13 +60,13 @@ void printInstr(int *p, int *code, char *data) {
   int ir, arg;
   // 印出下一個指令
   ir = *++p;
-  printf(" %4d:%X %8.4s", p-code, p, &op[ir * 5]);
+  printf(" %4X:%X %8.4s", p-code, p, &op[ir * 5]);
   if (ir <= ADJ) { // ADJ 之前的指令有一個參數
     arg = *++p;
     if (ir==JSR || ir==JMP || ir==BZ || ir==BNZ) {
-      if (arg==0) printf("0?\n"); else printf(" %d:%X\n", (int*)arg-code, (int*)arg);
+      if (arg==0) printf("0?\n"); else printf(" %X:%X\n", (int*)arg-code, (int*)arg);
     } else if (ir==ADDR)
-      printf(" %d:%X\n", (char*)arg-data, arg);
+      printf(" %X:%X\n", (char*)arg-data, arg);
     else 
       printf(" %d\n", arg);
   } else { // ADJ 之後的指令沒有任何參數
@@ -520,10 +520,7 @@ int run(int *pc, int *bp, int *sp) {
     else if (i == READ) a = read(sp[2], (char *)sp[1], *sp); // 讀檔
     else if (i == WRIT) a = write(sp[2], (char *)sp[1], *sp); // 寫檔
     else if (i == CLOS) a = close(*sp); // 關檔
-    else if (i == PRTF) { // PRTF 後面都跟著 ADJ #參數個數
-      t = sp + pc[1]; // pc[1] 就是取得 #參數個數，於是 t 指向堆疊參數尾端
-      a = printf((char *)t[-1], t[-2], t[-3], t[-4], t[-5], t[-6]);  // printf("....", a, b, c, d, e)
-    }
+    else if (i == PRTF) { t = sp + pc[1]; a = printf((char *)t[-1], t[-2], t[-3], t[-4], t[-5], t[-6]); } // printf("....", a, b, c, d, e)
     else if (i == MALC) a = (int)malloc(*sp); // 分配記憶體
     else if (i == FREE) free((void *)*sp); // 釋放記憶體
     else if (i == MSET) a = (int)memset((char *)sp[2], sp[1], *sp); // 設定記憶體
@@ -568,7 +565,7 @@ int obj_dump(int *entry, int *code, int codeLen, char *data, int dataLen) {
   printf("entry: 0x%X\n", entry);
   printf("code: start=0x%X length=0x%X\n", code, codeLen);
   p=code;
-  while (p<code+codeLen-1) {
+  while (p<code+codeLen) {
     printInstr(p, code, data);
     p = p+stepInstr(p);
   }
@@ -584,9 +581,8 @@ int obj_dump(int *entry, int *code, int codeLen, char *data, int dataLen) {
 int obj_save(char *oFile, int *entry, int *code, int codeLen, char *data, int dataLen) {
   int fd, len;
   // 儲存目的檔
-  // fd = open(oFile, 0101401, 0666); // Windows: O_BINARY|O_CREAT|O_WRONLY|O_TRUNC=0101401
-  fd = open(oFile, 0101501, 0666); // Windows: O_BINARY|O_CREAT|O_WRONLY|O_TRUNC=0101401
-  if (fd == -1) { printf("error: obj_save: open fail!\n"); exit(1); }
+  fd = open(oFile, 0101401); // Windows: O_BINARY|O_CREAT|O_WRONLY|O_TRUNC=0101401 // Linux: O_CREAT|O_WRONLY|O_TRUNC=01101
+  if (fd == -1) return -1;
   write(fd, &entry, sizeof(int));
   write(fd, &code, sizeof(int));
   write(fd, &codeLen, sizeof(int));
@@ -616,23 +612,6 @@ int obj_load(int fd) {
   pc = code + (entry-codex);
 }
 
-void init() {
-  poolsz = 256*1024; // 最大記憶體大小 (程式碼/資料/堆疊/符號表)
-  if (!(sym = malloc(poolsz))) { printf("could not malloc(%d) symbol area\n", poolsz); return -1; } // 符號段
-  if (!(code = le = e = malloc(poolsz))) { printf("could not malloc(%d) text area\n", poolsz); return -1; } // 程式段
-  if (!(data = datap = malloc(poolsz))) { printf("could not malloc(%d) data area\n", poolsz); return -1; } // 資料段
-  if (!(sp = malloc(poolsz))) { printf("could not malloc(%d) stack area\n", poolsz); return -1; }  // 堆疊段
-
-  memset(sym,  0, poolsz);
-  memset(e,    0, poolsz);
-  memset(data, 0, poolsz);
-
-  op = "LEA ,IMM ,ADDR,JMP ,JSR ,BZ  ,BNZ ,ENT ,ADJ ,LEV ,LI  ,LC  ,SI  ,SC  ,PSH ,"
-       "OR  ,XOR ,AND ,EQ  ,NE  ,LT  ,GT  ,LE  ,GE  ,SHL ,SHR ,ADD ,SUB ,MUL ,DIV ,MOD ,"
-       "OPEN,READ,WRIT,CLOS,PRTF,MALC,FREE,MSET,MCMP,EXIT,";
-}
-
-#ifdef __C6__
 int main(int argc, char **argv) {
   char *iFile, *oFile, *narg;
   // 主程式
@@ -654,7 +633,20 @@ int main(int argc, char **argv) {
     printf("could not open(%s)\n", iFile);
     return -1;
   }
-  init();
+
+  poolsz = 256*1024; // 最大記憶體大小 (程式碼/資料/堆疊/符號表)
+  if (!(sym = malloc(poolsz))) { printf("could not malloc(%d) symbol area\n", poolsz); return -1; } // 符號段
+  if (!(code = le = e = malloc(poolsz))) { printf("could not malloc(%d) text area\n", poolsz); return -1; } // 程式段
+  if (!(data = datap = malloc(poolsz))) { printf("could not malloc(%d) data area\n", poolsz); return -1; } // 資料段
+  if (!(sp = malloc(poolsz))) { printf("could not malloc(%d) stack area\n", poolsz); return -1; }  // 堆疊段
+
+  memset(sym,  0, poolsz);
+  memset(e,    0, poolsz);
+  memset(data, 0, poolsz);
+
+  op = "LEA ,IMM ,ADDR,JMP ,JSR ,BZ  ,BNZ ,ENT ,ADJ ,LEV ,LI  ,LC  ,SI  ,SC  ,PSH ,"
+       "OR  ,XOR ,AND ,EQ  ,NE  ,LT  ,GT  ,LE  ,GE  ,SHL ,SHR ,ADD ,SUB ,MUL ,DIV ,MOD ,"
+       "OPEN,READ,WRIT,CLOS,PRTF,MALC,FREE,MSET,MCMP,EXIT,";
   if (o_dump) { // -u: 印出目的檔
     obj_load(fd);
     obj_dump(pc, code, codeLen, data, dataLen);
@@ -669,11 +661,10 @@ int main(int argc, char **argv) {
   if (!(pc = (int *)idmain[Val])) { printf("main() not defined\n"); return -1; }
   if (src) return 0; // 編譯並列印，不執行
   if (o_save) { // -o 輸出目的檔，但不執行
-    obj_save(oFile, pc, code, e-code+1, data, datap-data);
+    obj_save(oFile, pc, code, e-code, data, datap-data);
     printf("Compile %s success!\nOutput: %s\n", iFile, oFile);
     return 0;
   }
   close(fd);
   vm(argc, argv); // 用虛擬機執行編譯出來的碼
 }
-#endif

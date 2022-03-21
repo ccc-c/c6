@@ -1,0 +1,1 @@
+gcc -w -D__C6__ -DOS=WINDOWS c6.c -o c6
