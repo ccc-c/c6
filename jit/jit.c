@@ -7,8 +7,13 @@ int obj_toasm(int *entry, int *code, int codeLen, char *data, int dataLen) {
   char *dp;
   printf("	.section	.rodata\n.LC0:	.string	\"");
   dp = data;
-  while (*dp) {
-    if (*dp == '\n') printf("\\n"); else printf("%c", *dp);
+  while (dp<data+dataLen) {
+    if (*dp == '\n')
+	  printf("\\n");
+	else if (*dp == '\0')
+	  printf("\\0");
+	else
+	  printf("%c", *dp);
     dp++;
   }
   printf("\"\n");
