@@ -1,4 +1,4 @@
-# C6 -- 600 行的 C 語言編譯器
+# C6 -- 700 行的 C 語言編譯器
 
 * 原作者 -- Robert Swierczek, https://github.com/rswier/
 * 原專案 -- https://github.com/rswier/c4
