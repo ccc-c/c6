@@ -9,7 +9,7 @@
 #include <memory.h>
 #include <unistd.h>
 #include <fcntl.h>
-#define int long long // c6 要求 int 與處理器位址同樣長度，因此將 int 定義為 64 位元整數。
+// #define int long long // c6 要求 int 與處理器位址同樣長度，因此將 int 定義為 64 位元整數。
 
 char *p, *lp, // current position in source code (p: 目前原始碼指標, lp: 上一行原始碼指標)
      *data,*datap, // data/bss pointer (資料段機器碼指標)
@@ -632,7 +632,7 @@ void init() {
        "OPEN,READ,WRIT,CLOS,PRTF,MALC,FREE,MSET,MCMP,EXIT,";
 }
 
-#ifdef __C6__
+#ifndef NO_MAIN
 int main(int argc, char **argv) {
   char *iFile, *oFile, *narg;
   // 主程式

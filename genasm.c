@@ -1,3 +1,4 @@
+#define NO_MAIN
 #include "./c6.c"
 
 #define emit printf

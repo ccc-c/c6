@@ -1,14 +1,17 @@
 CC = gcc
-CFLAGS = -w -g -DOS=LINUX
-OBJS = c6 genasm
+CFLAGS = -w -g -m32
+OBJS = c6 genasm jit
 
-all: c6 genasm
+all: c6 genasm jit
 
 c6: c6.c
-	$(CC) $(CFLAGS) -D__C6__ $^ -o c6
+	$(CC) $(CFLAGS) $^ -o c6
 
 genasm: genasm.c
 	$(CC) $(CFLAGS) $^ -o genasm
+
+jit: jit.c
+	$(CC) $(CFLAGS) $^ -o jit -ldl
 
 clean:
 	rm -f $(OBJS)
