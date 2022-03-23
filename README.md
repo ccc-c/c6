@@ -6,8 +6,16 @@
 
 ## 使用方式
 
+建議在 Linux 下編譯本專案 (WSL 亦可，Windows 的 MinGW 比較容易有錯)
+
 ```
-$ gcc -w c6.c -o c6 // 用 -w 可以避免警告，因為 c6 的原始碼太精簡使用了危險語法
+$ sudo apt update
+$ sudo apt install gcc-multilib
+
+$ make
+gcc -w -g -m32 c6.c -o c6
+gcc -w -g -m32 genasm.c -o genasm
+gcc -w -g -m32 jit.c -o jit -ldl
 
 $ ./c6 test/hello.c
 hello, world
@@ -46,31 +54,27 @@ $ ./c6 -s test/hello.c
 3: int main()
 4: {
 5:   printf("hello, world\n");
-    1:930098     ENT  0       
-    3:9300A8     ADDR 0:9700A0
-    5:9300B8     PSH
-    6:9300C0     PRTF
-    7:9300C8     ADJ  1
-6:   return 0;
-    9:9300D8     IMM  0
-    B:9300E8     LEV
-7: }
-    C:9300F0     LEV
+    1:F7D47014     ENT  0
+    3:F7D4701C     ADDR 0:F7D06010
+    5:F7D47024     PSH
+    6:F7D47028     PRTF
+    7:F7D4702C     ADJ  1
+6: }
+    9:F7D47034     LEV
 ```
 
 ## 印出執行過程
 
 ```
 $ ./c6 -d test/hello.c
-    1:A30098     ENT  0       
-    3:A300A8     ADDR 0:A700A0
-    5:A300B8     PSH
-    6:A300C0     PRTF
+    1:F7C5E014     ENT  0
+    3:F7C5E01C     ADDR 0:F7C1D010
+    5:F7C5E024     PSH
+    6:F7C5E028     PRTF
 hello, world
-    7:A300C8     ADJ  1
-    9:A300D8     IMM  0
-    B:A300E8     LEV
- 1FFFC:B30070     PSH
- 1FFFD:B30078     EXIT
-exit(0) cycle = 9
+    7:F7C5E02C     ADJ  1
+    9:F7C5E034     LEV
+ -67586:F7C1C008     PSH
+ -67585:F7C1C00C     EXIT
+exit(13) cycle = 8
 ```
